@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image"
+	"image/draw"
 	"io"
 	"os"
 	"path/filepath"
@@ -89,6 +91,21 @@ func validateInputImageCount(images []string) error {
 		return fmt.Errorf("found %d image files, want exactly 9", len(images))
 	}
 	return nil
+}
+
+func centerCropSquare(src image.Image) image.Image {
+	bounds := src.Bounds()
+	size := bounds.Dx()
+	if bounds.Dy() < size {
+		size = bounds.Dy()
+	}
+
+	x0 := bounds.Min.X + (bounds.Dx()-size)/2
+	y0 := bounds.Min.Y + (bounds.Dy()-size)/2
+	cropBounds := image.Rect(0, 0, size, size)
+	dst := image.NewRGBA(cropBounds)
+	draw.Draw(dst, cropBounds, src, image.Pt(x0, y0), draw.Src)
+	return dst
 }
 
 func main() {

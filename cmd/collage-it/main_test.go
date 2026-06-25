@@ -1,6 +1,8 @@
 package main
 
 import (
+	"image"
+	"image/color"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -108,10 +110,86 @@ func TestValidateInputImageCount(t *testing.T) {
 	})
 }
 
+func TestCenterCropSquare(t *testing.T) {
+	t.Run("landscape", func(t *testing.T) {
+		src := newTestImage(5, 3)
+		got := centerCropSquare(src)
+
+		assertCropBounds(t, got, 3, 3)
+		assertCropSourcePixel(t, got, 0, 0, 1, 0)
+		assertCropSourcePixel(t, got, 2, 2, 3, 2)
+	})
+
+	t.Run("portrait", func(t *testing.T) {
+		src := newTestImage(3, 5)
+		got := centerCropSquare(src)
+
+		assertCropBounds(t, got, 3, 3)
+		assertCropSourcePixel(t, got, 0, 0, 0, 1)
+		assertCropSourcePixel(t, got, 2, 2, 2, 3)
+	})
+
+	t.Run("square", func(t *testing.T) {
+		src := newTestImage(4, 4)
+		got := centerCropSquare(src)
+
+		assertCropBounds(t, got, 4, 4)
+		assertCropSourcePixel(t, got, 0, 0, 0, 0)
+		assertCropSourcePixel(t, got, 3, 3, 3, 3)
+	})
+
+	t.Run("odd difference", func(t *testing.T) {
+		src := newTestImage(6, 3)
+		got := centerCropSquare(src)
+
+		assertCropBounds(t, got, 3, 3)
+		assertCropSourcePixel(t, got, 0, 0, 1, 0)
+		assertCropSourcePixel(t, got, 2, 2, 3, 2)
+	})
+}
+
 func mustWriteFile(t *testing.T, path string) {
 	t.Helper()
 
 	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
 		t.Fatalf("os.WriteFile() error = %v", err)
+	}
+}
+
+func newTestImage(width, height int) *image.RGBA {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.SetRGBA(x, y, color.RGBA{
+				R: uint8(x * 32),
+				G: uint8(y * 32),
+				B: uint8((x + y) * 16),
+				A: 0xff,
+			})
+		}
+	}
+	return img
+}
+
+func assertCropBounds(t *testing.T, got image.Image, wantWidth, wantHeight int) {
+	t.Helper()
+
+	bounds := got.Bounds()
+	if bounds.Dx() != wantWidth || bounds.Dy() != wantHeight {
+		t.Fatalf("bounds = %v, want %dx%d", bounds, wantWidth, wantHeight)
+	}
+}
+
+func assertCropSourcePixel(t *testing.T, got image.Image, gx, gy, sx, sy int) {
+	t.Helper()
+
+	want := color.RGBA{
+		R: uint8(sx * 32),
+		G: uint8(sy * 32),
+		B: uint8((sx + sy) * 16),
+		A: 0xff,
+	}
+	if gotColor := color.RGBAModel.Convert(got.At(gx, gy)).(color.RGBA); gotColor != want {
+		t.Fatalf("pixel(%d,%d) = %#v, want %#v", gx, gy, gotColor, want)
 	}
 }
