@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 )
 
 const (
@@ -17,6 +20,12 @@ type options struct {
 	namePrefix     string
 	spacingPx      int
 	artifactSizePx int
+}
+
+var supportedImageExtensions = map[string]struct{}{
+	".jpg":  {},
+	".jpeg": {},
+	".png":  {},
 }
 
 func parseOptions(args []string) (options, error) {
@@ -42,8 +51,60 @@ func parseOptions(args []string) (options, error) {
 	return opts, nil
 }
 
+func findInputImages(dir, prefix string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var images []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		if prefix != "" && !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if !isSupportedImageFile(name) {
+			continue
+		}
+
+		images = append(images, filepath.Join(dir, name))
+	}
+
+	sort.Strings(images)
+	return images, nil
+}
+
+func isSupportedImageFile(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	_, ok := supportedImageExtensions[ext]
+	return ok
+}
+
+func validateInputImageCount(images []string) error {
+	if len(images) != 9 {
+		return fmt.Errorf("found %d image files, want exactly 9", len(images))
+	}
+	return nil
+}
+
 func main() {
-	if _, err := parseOptions(os.Args[1:]); err != nil {
+	opts, err := parseOptions(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	images, err := findInputImages(".", opts.namePrefix)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	if err := validateInputImageCount(images); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
