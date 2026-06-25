@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	_ "image/jpeg"
+	"image/png"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -148,11 +151,71 @@ func TestCenterCropSquare(t *testing.T) {
 	})
 }
 
+func TestRunGeneratesJPEGOutput(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 9; i++ {
+		name := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
+		mustWritePNGImage(t, name, newTestImage(4+i%3, 5+i%4))
+	}
+
+	outputPath := filepath.Join(dir, defaultOutputFileName)
+	opts := options{
+		namePrefix:     "trip_",
+		spacingPx:      1,
+		artifactSizePx: 11,
+	}
+	if err := run(opts, dir, outputPath); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+
+	f, err := os.Open(outputPath)
+	if err != nil {
+		t.Fatalf("os.Open() error = %v", err)
+	}
+	defer f.Close()
+
+	img, format, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("image.Decode() error = %v", err)
+	}
+	if format != "jpeg" {
+		t.Fatalf("format = %q, want jpeg", format)
+	}
+	if bounds := img.Bounds(); bounds.Dx() != opts.artifactSizePx || bounds.Dy() != opts.artifactSizePx {
+		t.Fatalf("bounds = %v, want %dx%d", bounds, opts.artifactSizePx, opts.artifactSizePx)
+	}
+}
+
+func TestSaveJPEGRejectsDirectoryPath(t *testing.T) {
+	dir := t.TempDir()
+	err := saveJPEG(dir, newTestImage(1, 1))
+	if err == nil {
+		t.Fatal("saveJPEG() error = nil, want non-nil")
+	}
+	if got := err.Error(); !strings.Contains(got, "create output") || !strings.Contains(got, dir) {
+		t.Fatalf("error = %q, want to mention output path", got)
+	}
+}
+
 func mustWriteFile(t *testing.T, path string) {
 	t.Helper()
 
 	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
 		t.Fatalf("os.WriteFile() error = %v", err)
+	}
+}
+
+func mustWritePNGImage(t *testing.T, path string, img image.Image) {
+	t.Helper()
+
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("os.Create() error = %v", err)
+	}
+	defer f.Close()
+
+	if err := png.Encode(f, img); err != nil {
+		t.Fatalf("png.Encode() error = %v", err)
 	}
 }
 

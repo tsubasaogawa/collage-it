@@ -115,13 +115,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	images, err := findInputImages(".", opts.namePrefix)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-
-	if err := validateInputImageCount(images); err != nil {
+	if err := run(opts, ".", defaultOutputFileName); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
