@@ -186,6 +186,172 @@ func TestRunGeneratesJPEGOutput(t *testing.T) {
 	}
 }
 
+func TestRunRejectsWrongImageCount(t *testing.T) {
+	t.Run("too few images", func(t *testing.T) {
+		dir := t.TempDir()
+		for i := 0; i < 8; i++ {
+			name := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
+			mustWritePNGImage(t, name, newTestImage(4, 4))
+		}
+
+		opts := options{namePrefix: "trip_", spacingPx: 1, artifactSizePx: 11}
+		err := run(opts, dir, filepath.Join(dir, defaultOutputFileName))
+		if err == nil {
+			t.Fatal("run() error = nil, want non-nil for 8 images")
+		}
+		if got := err.Error(); !strings.Contains(got, "exactly 9") {
+			t.Fatalf("error = %q, want to mention exactly 9", got)
+		}
+	})
+
+	t.Run("too many images", func(t *testing.T) {
+		dir := t.TempDir()
+		for i := 0; i < 10; i++ {
+			name := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
+			mustWritePNGImage(t, name, newTestImage(4, 4))
+		}
+
+		opts := options{namePrefix: "trip_", spacingPx: 1, artifactSizePx: 11}
+		err := run(opts, dir, filepath.Join(dir, defaultOutputFileName))
+		if err == nil {
+			t.Fatal("run() error = nil, want non-nil for 10 images")
+		}
+		if got := err.Error(); !strings.Contains(got, "exactly 9") {
+			t.Fatalf("error = %q, want to mention exactly 9", got)
+		}
+	})
+}
+
+func TestRunRejectsMissingInputDirectory(t *testing.T) {
+	dir := t.TempDir()
+	missingDir := filepath.Join(dir, "does-not-exist")
+
+	opts := options{namePrefix: "trip_", spacingPx: 1, artifactSizePx: 11}
+	err := run(opts, missingDir, filepath.Join(dir, defaultOutputFileName))
+	if err == nil {
+		t.Fatal("run() error = nil, want non-nil for missing input directory")
+	}
+}
+
+func TestRunPropagatesDecodeError(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 8; i++ {
+		name := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
+		mustWritePNGImage(t, name, newTestImage(4, 4))
+	}
+	// 9th "image" is actually invalid image data with a supported extension.
+	invalidPath := filepath.Join(dir, "trip_09.png")
+	mustWriteFile(t, invalidPath)
+
+	opts := options{namePrefix: "trip_", spacingPx: 1, artifactSizePx: 11}
+	err := run(opts, dir, filepath.Join(dir, defaultOutputFileName))
+	if err == nil {
+		t.Fatal("run() error = nil, want non-nil for invalid image data")
+	}
+	if got := err.Error(); !strings.Contains(got, "decode") || !strings.Contains(got, invalidPath) {
+		t.Fatalf("error = %q, want to mention decode and %q", got, invalidPath)
+	}
+}
+
+func TestRunSpacingPxAffectsGapColor(t *testing.T) {
+	dir := t.TempDir()
+	for i := 0; i < 9; i++ {
+		name := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
+		mustWritePNGImage(t, name, newTestImage(4, 4))
+	}
+
+	outputPath := filepath.Join(dir, defaultOutputFileName)
+	opts := options{
+		namePrefix:     "trip_",
+		spacingPx:      3,
+		artifactSizePx: 30,
+	}
+	if err := run(opts, dir, outputPath); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+
+	f, err := os.Open(outputPath)
+	if err != nil {
+		t.Fatalf("os.Open() error = %v", err)
+	}
+	defer f.Close()
+
+	img, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("image.Decode() error = %v", err)
+	}
+
+	// cellSize = (30 - 2*3) / 3 = 8. The gap between cell 0 and cell 1 spans
+	// x in [8, 11); it should render as the (white) background color rather
+	// than photo content, regardless of spacing. Allow a small tolerance
+	// since the output is JPEG-compressed (lossy).
+	wantBackground := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	gap := color.RGBAModel.Convert(img.At(9, 0)).(color.RGBA)
+	assertColorNear(t, gap, wantBackground, 8)
+}
+
+func TestRunArtifactSizePxDeterminesOutputSize(t *testing.T) {
+	sizes := []int{9, 30, 99}
+
+	for _, size := range sizes {
+		size := size
+		t.Run(fmt.Sprintf("size=%d", size), func(t *testing.T) {
+			dir := t.TempDir()
+			for i := 0; i < 9; i++ {
+				name := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
+				mustWritePNGImage(t, name, newTestImage(4, 4))
+			}
+
+			outputPath := filepath.Join(dir, defaultOutputFileName)
+			opts := options{namePrefix: "trip_", spacingPx: 1, artifactSizePx: size}
+			if err := run(opts, dir, outputPath); err != nil {
+				t.Fatalf("run() error = %v", err)
+			}
+
+			f, err := os.Open(outputPath)
+			if err != nil {
+				t.Fatalf("os.Open() error = %v", err)
+			}
+			defer f.Close()
+
+			img, _, err := image.Decode(f)
+			if err != nil {
+				t.Fatalf("image.Decode() error = %v", err)
+			}
+			if bounds := img.Bounds(); bounds.Dx() != size || bounds.Dy() != size {
+				t.Fatalf("bounds = %v, want %dx%d", bounds, size, size)
+			}
+		})
+	}
+}
+
+func TestLoadImageRejectsMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	missingPath := filepath.Join(dir, "missing.png")
+
+	_, err := loadImage(missingPath)
+	if err == nil {
+		t.Fatal("loadImage() error = nil, want non-nil for missing file")
+	}
+	if got := err.Error(); !strings.Contains(got, "open") || !strings.Contains(got, missingPath) {
+		t.Fatalf("error = %q, want to mention open and %q", got, missingPath)
+	}
+}
+
+func TestLoadImageRejectsInvalidImageData(t *testing.T) {
+	dir := t.TempDir()
+	invalidPath := filepath.Join(dir, "invalid.png")
+	mustWriteFile(t, invalidPath)
+
+	_, err := loadImage(invalidPath)
+	if err == nil {
+		t.Fatal("loadImage() error = nil, want non-nil for invalid image data")
+	}
+	if got := err.Error(); !strings.Contains(got, "decode") || !strings.Contains(got, invalidPath) {
+		t.Fatalf("error = %q, want to mention decode and %q", got, invalidPath)
+	}
+}
+
 func TestSaveJPEGRejectsDirectoryPath(t *testing.T) {
 	dir := t.TempDir()
 	err := saveJPEG(dir, newTestImage(1, 1))
@@ -240,6 +406,20 @@ func assertCropBounds(t *testing.T, got image.Image, wantWidth, wantHeight int) 
 	bounds := got.Bounds()
 	if bounds.Dx() != wantWidth || bounds.Dy() != wantHeight {
 		t.Fatalf("bounds = %v, want %dx%d", bounds, wantWidth, wantHeight)
+	}
+}
+
+func assertColorNear(t *testing.T, got, want color.RGBA, tolerance int) {
+	t.Helper()
+
+	diff := func(a, b uint8) int {
+		if int(a) > int(b) {
+			return int(a) - int(b)
+		}
+		return int(b) - int(a)
+	}
+	if diff(got.R, want.R) > tolerance || diff(got.G, want.G) > tolerance || diff(got.B, want.B) > tolerance {
+		t.Fatalf("color = %#v, want %#v within tolerance %d", got, want, tolerance)
 	}
 }
 

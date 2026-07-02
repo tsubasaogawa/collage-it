@@ -2,6 +2,7 @@ package collage
 
 import (
 	"image/color"
+	"strings"
 	"testing"
 )
 
@@ -173,6 +174,18 @@ func TestLayoutConfigCellPlacement(t *testing.T) {
 			col:     -1,
 			wantErr: true,
 		},
+		{
+			name:    "row too large",
+			row:     3,
+			col:     0,
+			wantErr: true,
+		},
+		{
+			name:    "col too large",
+			row:     0,
+			col:     3,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -187,6 +200,18 @@ func TestLayoutConfigCellPlacement(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLayoutConfigCellPlacementRejectsInvalidConfig(t *testing.T) {
+	config := LayoutConfig{ArtifactSizePx: 0, SpacingPx: 0}
+
+	_, _, err := config.CellPlacement(0, 0)
+	if err == nil {
+		t.Fatal("CellPlacement() error = nil, want non-nil for invalid LayoutConfig")
+	}
+	if got := err.Error(); !strings.Contains(got, "artifact-size-px must be positive") {
+		t.Fatalf("error = %q, want to mention artifact-size-px must be positive", got)
 	}
 }
 

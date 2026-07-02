@@ -3,6 +3,7 @@ package collage
 import (
 	"image"
 	"image/color"
+	"strings"
 	"testing"
 )
 
@@ -24,6 +25,28 @@ func TestResizeToSquareNearestNeighbor(t *testing.T) {
 	assertColor(t, got, 3, 3, color.RGBA{R: 255, G: 255, A: 255})
 	assertColor(t, got, 0, 2, color.RGBA{B: 255, A: 255})
 	assertColor(t, got, 2, 2, color.RGBA{R: 255, G: 255, A: 255})
+}
+
+func TestResizeToSquareRejectsInvalidInput(t *testing.T) {
+	t.Run("non-positive size", func(t *testing.T) {
+		src := image.NewRGBA(image.Rect(0, 0, 2, 2))
+		if _, err := ResizeToSquare(src, 0); err == nil {
+			t.Fatal("ResizeToSquare() error = nil, want non-nil for size <= 0")
+		}
+	})
+
+	t.Run("nil source", func(t *testing.T) {
+		if _, err := ResizeToSquare(nil, 4); err == nil {
+			t.Fatal("ResizeToSquare() error = nil, want non-nil for nil source")
+		}
+	})
+
+	t.Run("zero bounds source", func(t *testing.T) {
+		src := image.NewRGBA(image.Rect(0, 0, 0, 0))
+		if _, err := ResizeToSquare(src, 4); err == nil {
+			t.Fatal("ResizeToSquare() error = nil, want non-nil for zero-bounds source")
+		}
+	})
 }
 
 func TestDrawCollage(t *testing.T) {
@@ -86,6 +109,30 @@ func TestDrawCollageRejectsInvalidInput(t *testing.T) {
 
 	if err := DrawCollage(canvas, []image.Image{}, layout); err == nil {
 		t.Fatal("DrawCollage() with wrong image count error = nil, want non-nil")
+	}
+}
+
+func TestDrawCollageRejectsCanvasSizeMismatch(t *testing.T) {
+	layout := LayoutConfig{ArtifactSizePx: 11, SpacingPx: 1}
+	canvas, err := NewCanvas(CanvasConfig{
+		Size:            9, // mismatched with layout.ArtifactSizePx
+		BackgroundColor: DefaultBackgroundColor(),
+	})
+	if err != nil {
+		t.Fatalf("NewCanvas() error = %v", err)
+	}
+
+	images := make([]image.Image, 0, 9)
+	for i := 0; i < 9; i++ {
+		images = append(images, solidImage(color.RGBA{A: 255}))
+	}
+
+	err = DrawCollage(canvas, images, layout)
+	if err == nil {
+		t.Fatal("DrawCollage() error = nil, want non-nil for canvas size mismatch")
+	}
+	if got := err.Error(); !strings.Contains(got, "canvas size") {
+		t.Fatalf("error = %q, want to mention canvas size", got)
 	}
 }
 
