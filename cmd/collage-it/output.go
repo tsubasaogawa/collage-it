@@ -21,6 +21,11 @@ func run(opts options, dir, outputPath string) error {
 		return err
 	}
 
+	images, err = selectLatestInputImages(images)
+	if err != nil {
+		return err
+	}
+
 	if err := validateInputImageCount(images); err != nil {
 		return err
 	}

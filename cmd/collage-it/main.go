@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 const (
@@ -87,10 +88,47 @@ func isSupportedImageFile(name string) bool {
 }
 
 func validateInputImageCount(images []string) error {
-	if len(images) != 9 {
-		return fmt.Errorf("found %d image files, want exactly 9", len(images))
+	if len(images) < 9 {
+		return fmt.Errorf("found %d image files, want at least 9", len(images))
 	}
 	return nil
+}
+
+func selectLatestInputImages(images []string) ([]string, error) {
+	if len(images) <= 9 {
+		return images, nil
+	}
+
+	type imageWithModTime struct {
+		path    string
+		modTime time.Time
+	}
+
+	imagesWithModTime := make([]imageWithModTime, 0, len(images))
+	for _, path := range images {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("stat input image %s: %w", path, err)
+		}
+		imagesWithModTime = append(imagesWithModTime, imageWithModTime{
+			path:    path,
+			modTime: info.ModTime(),
+		})
+	}
+
+	sort.Slice(imagesWithModTime, func(i, j int) bool {
+		if imagesWithModTime[i].modTime.Equal(imagesWithModTime[j].modTime) {
+			return imagesWithModTime[i].path < imagesWithModTime[j].path
+		}
+		return imagesWithModTime[i].modTime.After(imagesWithModTime[j].modTime)
+	})
+
+	selected := make([]string, 0, 9)
+	for _, image := range imagesWithModTime[:9] {
+		selected = append(selected, image.path)
+	}
+	sort.Strings(selected)
+	return selected, nil
 }
 
 func centerCropSquare(src image.Image) image.Image {

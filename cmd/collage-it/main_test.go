@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseOptionsDefaults(t *testing.T) {
@@ -94,6 +95,83 @@ func TestFindInputImagesFiltersAndSorts(t *testing.T) {
 	}
 }
 
+func TestSelectLatestInputImagesUsesModificationTime(t *testing.T) {
+	dir := t.TempDir()
+	baseTime := time.Unix(1_000_000, 0)
+	for i := 0; i < 10; i++ {
+		path := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
+		mustWriteFile(t, path)
+		modTime := baseTime.Add(time.Duration(i) * time.Minute)
+		if err := os.Chtimes(path, modTime, modTime); err != nil {
+			t.Fatalf("os.Chtimes() error = %v", err)
+		}
+	}
+
+	images, err := findInputImages(dir, "trip_")
+	if err != nil {
+		t.Fatalf("findInputImages() error = %v", err)
+	}
+
+	got, err := selectLatestInputImages(images)
+	if err != nil {
+		t.Fatalf("selectLatestInputImages() error = %v", err)
+	}
+
+	want := make([]string, 0, 9)
+	for i := 1; i < 10; i++ {
+		want = append(want, filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1)))
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("selectLatestInputImages() = %v, want %v", got, want)
+	}
+}
+
+func TestSelectLatestInputImagesBreaksEqualModificationTimesByFilename(t *testing.T) {
+	dir := t.TempDir()
+	modTime := time.Unix(1_000_000, 0)
+	images := make([]string, 0, 10)
+	for i := 0; i < 10; i++ {
+		path := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
+		mustWriteFile(t, path)
+		if err := os.Chtimes(path, modTime, modTime); err != nil {
+			t.Fatalf("os.Chtimes() error = %v", err)
+		}
+		images = append(images, path)
+	}
+
+	got, err := selectLatestInputImages(images)
+	if err != nil {
+		t.Fatalf("selectLatestInputImages() error = %v", err)
+	}
+
+	want := images[:9]
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("selectLatestInputImages() = %v, want %v", got, want)
+	}
+}
+
+func TestSelectLatestInputImagesKeepsNine(t *testing.T) {
+	images := []string{
+		"image-01.png",
+		"image-02.png",
+		"image-03.png",
+		"image-04.png",
+		"image-05.png",
+		"image-06.png",
+		"image-07.png",
+		"image-08.png",
+		"image-09.png",
+	}
+
+	got, err := selectLatestInputImages(images)
+	if err != nil {
+		t.Fatalf("selectLatestInputImages() error = %v", err)
+	}
+	if !reflect.DeepEqual(got, images) {
+		t.Fatalf("selectLatestInputImages() = %v, want %v", got, images)
+	}
+}
+
 func TestValidateInputImageCount(t *testing.T) {
 	t.Run("valid", func(t *testing.T) {
 		images := make([]string, 9)
@@ -107,8 +185,8 @@ func TestValidateInputImageCount(t *testing.T) {
 		if err == nil {
 			t.Fatal("validateInputImageCount() error = nil, want non-nil")
 		}
-		if got := err.Error(); !strings.Contains(got, "exactly 9") {
-			t.Fatalf("error = %q, want to mention exactly 9", got)
+		if got := err.Error(); !strings.Contains(got, "at least 9") {
+			t.Fatalf("error = %q, want to mention at least 9", got)
 		}
 	})
 }
@@ -186,7 +264,7 @@ func TestRunGeneratesJPEGOutput(t *testing.T) {
 	}
 }
 
-func TestRunRejectsWrongImageCount(t *testing.T) {
+func TestRunValidatesInputImageCount(t *testing.T) {
 	t.Run("too few images", func(t *testing.T) {
 		dir := t.TempDir()
 		for i := 0; i < 8; i++ {
@@ -199,25 +277,31 @@ func TestRunRejectsWrongImageCount(t *testing.T) {
 		if err == nil {
 			t.Fatal("run() error = nil, want non-nil for 8 images")
 		}
-		if got := err.Error(); !strings.Contains(got, "exactly 9") {
-			t.Fatalf("error = %q, want to mention exactly 9", got)
+		if got := err.Error(); !strings.Contains(got, "at least 9") {
+			t.Fatalf("error = %q, want to mention at least 9", got)
 		}
 	})
 
-	t.Run("too many images", func(t *testing.T) {
+	t.Run("more than nine images uses the latest nine", func(t *testing.T) {
 		dir := t.TempDir()
+		baseTime := time.Unix(1_000_000, 0)
 		for i := 0; i < 10; i++ {
 			name := filepath.Join(dir, fmt.Sprintf("trip_%02d.png", i+1))
-			mustWritePNGImage(t, name, newTestImage(4, 4))
+			if i == 0 {
+				// The oldest candidate must be ignored before image decoding.
+				mustWriteFile(t, name)
+			} else {
+				mustWritePNGImage(t, name, newTestImage(4, 4))
+			}
+			modTime := baseTime.Add(time.Duration(i) * time.Minute)
+			if err := os.Chtimes(name, modTime, modTime); err != nil {
+				t.Fatalf("os.Chtimes() error = %v", err)
+			}
 		}
 
 		opts := options{namePrefix: "trip_", spacingPx: 1, artifactSizePx: 11}
-		err := run(opts, dir, filepath.Join(dir, defaultOutputFileName))
-		if err == nil {
-			t.Fatal("run() error = nil, want non-nil for 10 images")
-		}
-		if got := err.Error(); !strings.Contains(got, "exactly 9") {
-			t.Fatalf("error = %q, want to mention exactly 9", got)
+		if err := run(opts, dir, filepath.Join(dir, defaultOutputFileName)); err != nil {
+			t.Fatalf("run() error = %v, want nil when more than 9 images are present", err)
 		}
 	})
 }
