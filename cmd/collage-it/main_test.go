@@ -29,6 +29,9 @@ func TestParseOptionsDefaults(t *testing.T) {
 	if opts.artifactSizePx != defaultArtifactSizePx {
 		t.Fatalf("artifactSizePx = %d, want %d", opts.artifactSizePx, defaultArtifactSizePx)
 	}
+	if opts.inputDirectory != defaultInputDirectory {
+		t.Fatalf("inputDirectory = %q, want %q", opts.inputDirectory, defaultInputDirectory)
+	}
 }
 
 func TestParseOptionsCustomValues(t *testing.T) {
@@ -45,6 +48,33 @@ func TestParseOptionsCustomValues(t *testing.T) {
 	}
 	if opts.artifactSizePx != 1024 {
 		t.Fatalf("artifactSizePx = %d, want %d", opts.artifactSizePx, 1024)
+	}
+	if opts.inputDirectory != defaultInputDirectory {
+		t.Fatalf("inputDirectory = %q, want %q", opts.inputDirectory, defaultInputDirectory)
+	}
+}
+
+func TestParseOptionsAcceptsInputDirectory(t *testing.T) {
+	opts, err := parseOptions([]string{"-name-prefix", "IMG_", "/photos/monthly-nine/"})
+	if err != nil {
+		t.Fatalf("parseOptions() error = %v", err)
+	}
+
+	if opts.namePrefix != "IMG_" {
+		t.Fatalf("namePrefix = %q, want %q", opts.namePrefix, "IMG_")
+	}
+	if opts.inputDirectory != "/photos/monthly-nine/" {
+		t.Fatalf("inputDirectory = %q, want %q", opts.inputDirectory, "/photos/monthly-nine/")
+	}
+}
+
+func TestParseOptionsRejectsMultipleInputDirectories(t *testing.T) {
+	_, err := parseOptions([]string{"/photos/one", "/photos/two"})
+	if err == nil {
+		t.Fatal("parseOptions() error = nil, want non-nil")
+	}
+	if got := err.Error(); !strings.Contains(got, "at most one input directory") {
+		t.Fatalf("error = %q, want to mention input directory count", got)
 	}
 }
 

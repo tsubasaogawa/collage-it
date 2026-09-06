@@ -17,13 +17,15 @@ go build -o collage-it ./cmd/collage-it
 ## Usage
 
 Place at least 9 target image files in a directory, then run the tool from
-that directory (or build the binary and run it there):
+that directory (or pass the directory as the final argument):
 
 ```bash
 go run ./cmd/collage-it -name-prefix trip_ -spacing-px 16 -artifact-size-px 2048
+go run ./cmd/collage-it -name-prefix trip_ /path/to/photos
 ```
 
-- The tool scans the current directory for image files.
+- The tool scans the current directory for image files, or the directory
+  supplied as the final argument.
 - At least 9 matching images must be found, or the command fails with an
   error such as `found 5 image files, want at least 9`.
 - If more than 9 matching images are found, the 9 files with the newest
@@ -45,7 +47,7 @@ with a non-zero status and a descriptive error message on stderr.
 
 ## Output
 
-The collage is written to a fixed file named `collage.jpg` in the current
+The collage is written to a fixed file named `collage.jpg` in the input
 directory, encoded as JPEG (quality 95).
 
 ## License

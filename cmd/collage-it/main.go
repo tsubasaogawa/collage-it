@@ -17,12 +17,14 @@ const (
 	defaultNamePrefix     = ""
 	defaultSpacingPx      = 16
 	defaultArtifactSizePx = 2048
+	defaultInputDirectory = "."
 )
 
 type options struct {
 	namePrefix     string
 	spacingPx      int
 	artifactSizePx int
+	inputDirectory string
 }
 
 var supportedImageExtensions = map[string]struct{}{
@@ -49,6 +51,15 @@ func parseOptions(args []string) (options, error) {
 	}
 	if opts.artifactSizePx <= 0 {
 		return options{}, fmt.Errorf("invalid value for -artifact-size-px: must be > 0")
+	}
+
+	positionals := fs.Args()
+	if len(positionals) > 1 {
+		return options{}, fmt.Errorf("expected at most one input directory, got %d", len(positionals))
+	}
+	opts.inputDirectory = defaultInputDirectory
+	if len(positionals) == 1 {
+		opts.inputDirectory = positionals[0]
 	}
 
 	return opts, nil
@@ -153,7 +164,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(opts, ".", defaultOutputFileName); err != nil {
+	outputPath := filepath.Join(opts.inputDirectory, defaultOutputFileName)
+	if err := run(opts, opts.inputDirectory, outputPath); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
