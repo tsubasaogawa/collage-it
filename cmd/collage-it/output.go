@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/jpeg"
 	_ "image/png"
+	"math/rand"
 	"os"
 
 	"collage-it/internal/collage"
@@ -28,6 +29,10 @@ func run(opts options, dir, outputPath string) error {
 
 	if err := validateInputImageCount(images); err != nil {
 		return err
+	}
+
+	if opts.random {
+		shuffleInputImages(images, rand.New(rand.NewSource(rand.Int63())))
 	}
 
 	preparedImages, err := loadAndPrepareImages(images)
