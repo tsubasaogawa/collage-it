@@ -21,6 +21,8 @@ that directory (or pass the directory as the final argument):
 
 ```bash
 go run ./cmd/collage-it -name-prefix trip_ -spacing-px 16 -artifact-size-px 2048
+go run ./cmd/collage-it -random
+go run ./cmd/collage-it -help
 go run ./cmd/collage-it -name-prefix trip_ /path/to/photos
 ```
 
@@ -32,7 +34,10 @@ go run ./cmd/collage-it -name-prefix trip_ /path/to/photos
   modification times are selected. Files with equal modification times are
   resolved by filename.
 - Supported image extensions: `.jpg`, `.jpeg`, `.png`.
-- The selected files are sorted by filename for a stable, reproducible layout.
+- By default, the selected files are sorted by filename for a stable,
+  reproducible layout. `-random` shuffles the display order of those selected
+  files without changing which files are selected.
+- Use `-help` to print the available flags and usage.
 
 ### Flags
 
@@ -41,6 +46,8 @@ go run ./cmd/collage-it -name-prefix trip_ /path/to/photos
 | `-name-prefix` | `""` (no filter) | Only files whose name starts with this prefix are considered as input images. |
 | `-spacing-px` | `16` | Spacing between photos, in pixels. Must be `>= 0`. |
 | `-artifact-size-px` | `2048` | Side length of the output square image, in pixels. Must be `> 0`. |
+| `-help` | `false` | Print usage and available flags. |
+| `-random` | `false` | Randomize the display order of the selected images. |
 
 Invalid flag values (e.g. a negative `-spacing-px`) cause the command to exit
 with a non-zero status and a descriptive error message on stderr.

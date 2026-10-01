@@ -1,14 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
 	_ "image/jpeg"
 	"image/png"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +31,9 @@ func TestParseOptionsDefaults(t *testing.T) {
 	}
 	if opts.artifactSizePx != defaultArtifactSizePx {
 		t.Fatalf("artifactSizePx = %d, want %d", opts.artifactSizePx, defaultArtifactSizePx)
+	}
+	if opts.help || opts.random {
+		t.Fatalf("help/random defaults = %t/%t, want false/false", opts.help, opts.random)
 	}
 	if opts.inputDirectory != defaultInputDirectory {
 		t.Fatalf("inputDirectory = %q, want %q", opts.inputDirectory, defaultInputDirectory)
@@ -51,6 +57,55 @@ func TestParseOptionsCustomValues(t *testing.T) {
 	}
 	if opts.inputDirectory != defaultInputDirectory {
 		t.Fatalf("inputDirectory = %q, want %q", opts.inputDirectory, defaultInputDirectory)
+	}
+}
+
+func TestParseOptionsHelpAndRandomFlags(t *testing.T) {
+	t.Run("help", func(t *testing.T) {
+		opts, err := parseOptions([]string{"-help", "-artifact-size-px", "0"})
+		if err != nil {
+			t.Fatalf("parseOptions() error = %v", err)
+		}
+		if !opts.help {
+			t.Fatal("help = false, want true")
+		}
+	})
+
+	t.Run("random", func(t *testing.T) {
+		opts, err := parseOptions([]string{"-random"})
+		if err != nil {
+			t.Fatalf("parseOptions() error = %v", err)
+		}
+		if !opts.random {
+			t.Fatal("random = false, want true")
+		}
+	})
+}
+
+func TestPrintUsageIncludesHelpAndRandomFlags(t *testing.T) {
+	var output bytes.Buffer
+	printUsage(&output)
+
+	for _, want := range []string{"Usage: collage-it", "-help", "-random"} {
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("usage output %q does not contain %q", output.String(), want)
+		}
+	}
+}
+
+func TestShuffleInputImages(t *testing.T) {
+	images := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i"}
+	want := append([]string(nil), images...)
+
+	shuffleInputImages(images, rand.New(rand.NewSource(1)))
+
+	if reflect.DeepEqual(images, want) {
+		t.Fatalf("shuffleInputImages() did not change the input order: %v", images)
+	}
+	sort.Strings(images)
+	sort.Strings(want)
+	if !reflect.DeepEqual(images, want) {
+		t.Errorf("shuffleInputImages() changed the selected images: got %v, want %v", images, want)
 	}
 }
 
@@ -329,9 +384,9 @@ func TestRunValidatesInputImageCount(t *testing.T) {
 			}
 		}
 
-		opts := options{namePrefix: "trip_", spacingPx: 1, artifactSizePx: 11}
+		opts := options{namePrefix: "trip_", spacingPx: 1, artifactSizePx: 11, random: true}
 		if err := run(opts, dir, filepath.Join(dir, defaultOutputFileName)); err != nil {
-			t.Fatalf("run() error = %v, want nil when more than 9 images are present", err)
+			t.Fatalf("run() error = %v, want nil in random order when more than 9 images are present", err)
 		}
 	})
 }

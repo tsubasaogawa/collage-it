@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/draw"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
@@ -24,6 +25,8 @@ type options struct {
 	namePrefix     string
 	spacingPx      int
 	artifactSizePx int
+	help           bool
+	random         bool
 	inputDirectory string
 }
 
@@ -34,16 +37,15 @@ var supportedImageExtensions = map[string]struct{}{
 }
 
 func parseOptions(args []string) (options, error) {
-	fs := flag.NewFlagSet("collage-it", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-
 	var opts options
-	fs.StringVar(&opts.namePrefix, "name-prefix", defaultNamePrefix, "prefix for input image filenames")
-	fs.IntVar(&opts.spacingPx, "spacing-px", defaultSpacingPx, "spacing between photos in pixels")
-	fs.IntVar(&opts.artifactSizePx, "artifact-size-px", defaultArtifactSizePx, "output image side length in pixels")
+	fs := newFlagSet(&opts, io.Discard)
 
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
+	}
+
+	if opts.help {
+		return opts, nil
 	}
 
 	if opts.spacingPx < 0 {
@@ -63,6 +65,28 @@ func parseOptions(args []string) (options, error) {
 	}
 
 	return opts, nil
+}
+
+func newFlagSet(opts *options, output io.Writer) *flag.FlagSet {
+	fs := flag.NewFlagSet("collage-it", flag.ContinueOnError)
+	fs.SetOutput(output)
+	fs.Usage = func() {
+		fmt.Fprintln(output, "Usage: collage-it [flags] [input-directory]")
+		fmt.Fprintln(output, "\nFlags:")
+		fs.PrintDefaults()
+	}
+
+	fs.StringVar(&opts.namePrefix, "name-prefix", defaultNamePrefix, "prefix for input image filenames")
+	fs.IntVar(&opts.spacingPx, "spacing-px", defaultSpacingPx, "spacing between photos in pixels")
+	fs.IntVar(&opts.artifactSizePx, "artifact-size-px", defaultArtifactSizePx, "output image side length in pixels")
+	fs.BoolVar(&opts.help, "help", false, "print this help message")
+	fs.BoolVar(&opts.random, "random", false, "randomize the display order of the selected images")
+	return fs
+}
+
+func printUsage(output io.Writer) {
+	var opts options
+	newFlagSet(&opts, output).Usage()
 }
 
 func findInputImages(dir, prefix string) ([]string, error) {
@@ -142,6 +166,12 @@ func selectLatestInputImages(images []string) ([]string, error) {
 	return selected, nil
 }
 
+func shuffleInputImages(images []string, rng *rand.Rand) {
+	rng.Shuffle(len(images), func(i, j int) {
+		images[i], images[j] = images[j], images[i]
+	})
+}
+
 func centerCropSquare(src image.Image) image.Image {
 	bounds := src.Bounds()
 	size := bounds.Dx()
@@ -159,9 +189,17 @@ func centerCropSquare(src image.Image) image.Image {
 
 func main() {
 	opts, err := parseOptions(os.Args[1:])
+	if err == flag.ErrHelp {
+		printUsage(os.Stdout)
+		return
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	if opts.help {
+		printUsage(os.Stdout)
+		return
 	}
 
 	outputPath := filepath.Join(opts.inputDirectory, defaultOutputFileName)
